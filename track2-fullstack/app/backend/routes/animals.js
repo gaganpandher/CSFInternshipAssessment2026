@@ -5,19 +5,45 @@ const { db } = require('../db');
 router.get('/', (req, res) => {
   const page = parseInt(req.query.page) || 0;
   const limit = parseInt(req.query.limit) || 10;
+  const offset = page * limit;
 
-  const animals = db.prepare(
-    'SELECT * FROM animals LIMIT ? OFFSET ?'
-  ).all(limit, page);
-
-  const result = animals.map(animal => {
-    const latestEvent = db.prepare(`
-      SELECT * FROM health_events
-      WHERE animal_id = ?
-      ORDER BY date DESC
+  const rows = db.prepare(`
+    SELECT 
+      a.id, a.name, a.tag_number, a.breed, a.date_of_birth, a.paddock_id,
+      h.id AS h_id, h.event_type AS h_event_type, h.notes AS h_notes, h.date AS h_date, h.vet_name AS h_vet_name
+    FROM animals a
+    LEFT JOIN health_events h ON h.id = (
+      SELECT id FROM health_events 
+      WHERE animal_id = a.id 
+      ORDER BY date DESC 
       LIMIT 1
-    `).get(animal.id);
-    return { ...animal, latest_health_event: latestEvent ?? null };
+    )
+    LIMIT ? OFFSET ?
+  `).all(limit, offset);
+
+  const result = rows.map(row => {
+    const animal = {
+      id: row.id,
+      name: row.name,
+      tag_number: row.tag_number,
+      breed: row.breed,
+      date_of_birth: row.date_of_birth,
+      paddock_id: row.paddock_id
+    };
+    
+    let latest_health_event = null;
+    if (row.h_id) {
+      latest_health_event = {
+        id: row.h_id,
+        animal_id: row.id,
+        event_type: row.h_event_type,
+        notes: row.h_notes,
+        date: row.h_date,
+        vet_name: row.h_vet_name
+      };
+    }
+
+    return { ...animal, latest_health_event };
   });
 
   res.json(result);
