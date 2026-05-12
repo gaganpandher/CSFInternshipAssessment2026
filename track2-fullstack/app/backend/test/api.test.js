@@ -108,3 +108,52 @@ test('POST /api/animals/:id/health-events creates an event', async () => {
   assert.equal(body.event_type, 'checkup');
   assert.equal(body.animal_id, id);
 });
+
+test('POST /api/animals/:id/weights creates a weight record', async () => {
+  const { body: animals } = await get('/animals?page=0&limit=1');
+  const id = animals[0].id;
+  const { status, body } = await post(`/animals/${id}/weights`, {
+    weight_kg: 45.2,
+    date: '2024-11-15',
+    notes: 'Post-shearing'
+  });
+  assert.equal(status, 201);
+  assert.equal(body.weight_kg, 45.2);
+  assert.equal(body.animal_id, id);
+});
+
+test('POST /api/animals/:id/weights returns 422 if weight_kg is missing or non-positive', async () => {
+  const { body: animals } = await get('/animals?page=0&limit=1');
+  const id = animals[0].id;
+  
+  let res = await post(`/animals/${id}/weights`, { date: '2024-11-15' });
+  assert.equal(res.status, 422);
+
+  res = await post(`/animals/${id}/weights`, { weight_kg: -5, date: '2024-11-15' });
+  assert.equal(res.status, 422);
+  
+  res = await post(`/animals/${id}/weights`, { weight_kg: 0, date: '2024-11-15' });
+  assert.equal(res.status, 422);
+});
+
+test('POST /api/animals/:id/weights returns 404 if the animal does not exist', async () => {
+  const { status } = await post('/animals/999999/weights', {
+    weight_kg: 45.2,
+    date: '2024-11-15'
+  });
+  assert.equal(status, 404);
+});
+
+test('GET /api/animals/:id/weights returns records ordered by date descending', async () => {
+  const { body: animals } = await get('/animals?page=0&limit=1');
+  const id = animals[0].id;
+  
+  await post(`/animals/${id}/weights`, { weight_kg: 40, date: '2024-10-01' });
+  await post(`/animals/${id}/weights`, { weight_kg: 42, date: '2024-11-01' });
+
+  const { status, body } = await get(`/animals/${id}/weights`);
+  assert.equal(status, 200);
+  assert.ok(Array.isArray(body));
+  assert.ok(body.length >= 2);
+  assert.ok(body[0].date >= body[1].date);
+});
